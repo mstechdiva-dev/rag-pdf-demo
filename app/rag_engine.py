@@ -1,46 +1,65 @@
 """
-RAG Engine - PDF processing and question answering with LangChain
+RAG Engine for PDF document processing and question answering.
+Uses LangChain, ChromaDB, and OpenAI.
 """
+
 import os
 from pathlib import Path
 from typing import List, Dict, Any, Optional
-import shutil
 
 from langchain_community.document_loaders import PyPDFLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
-from langchain_community.vectorstores import Chroma
+from langchain_chroma import Chroma
+from langchain.chains import RetrievalQA
+from langchain.prompts import PromptTemplate
 
-# Use persistent volume paths for Railway
+
+# Use Railway volume paths for persistence
 UPLOAD_DIR = Path("/app/data/uploads")
 CHROMA_DIR = Path("/app/data/chroma_db")
 
-# Ensure directories exist
+# Create directories if they don't exist
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 CHROMA_DIR.mkdir(parents=True, exist_ok=True)
 
 
 class RAGEngine:
+    """RAG Engine for processing PDFs and answering questions."""
+    
     def __init__(self):
+        """Initialize the RAG engine with OpenAI embeddings."""
         self.embeddings = OpenAIEmbeddings()
         self.text_splitter = RecursiveCharacterTextSplitter(
             chunk_size=1000,
             chunk_overlap=200,
             length_function=len,
         )
+        self._vector_store: Optional[Chroma] = None
     
-    def get_vector_store(self) -> Optional[Chroma]:
-        """Get or create the vector store."""
-        if not CHROMA_DIR.exists() or not any(CHROMA_DIR.iterdir()):
-            return None
+    def get_vector_store(self) -> Chroma:
+        """Get or create the Chroma vector store."""
+        if self._vector_store is None:
+            self._vector_store = Chroma(
+                persist_directory=str(CHROMA_DIR),
+                embedding_function=self.embeddings,
+                collection_name="pdf_documents"
+            )
+        return self._vector_store
+    
+    def process_pdf(self, file_path: str) -> Dict[str, Any]:
+        """
+        Process a PDF file: load, chunk, embed, and store.
         
-        return Chroma(
-            persist_directory=str(CHROMA_DIR),
-            embedding_function=self.embeddings
-        )
-    
-    def process_pdf(self, file_path: Path) -> Dict[str, Any]:
-        """Process a PDF and add it to the vector store."""
+        Args:
+            file_path: Path to the PDF file (string)
+            
+        Returns:
+            Dict with processing details (chunks count, etc.)
+        """
+        # Convert string to Path for consistent handling
+        file_path = Path(file_path)
+        
         # Load PDF
         loader = PyPDFLoader(str(file_path))
         documents = loader.load()
@@ -53,11 +72,7 @@ class RAGEngine:
         chunks = self.text_splitter.split_documents(documents)
         
         # Add to vector store
-        vector_store = Chroma(
-            persist_directory=str(CHROMA_DIR),
-            embedding_function=self.embeddings
-        )
-        
+        vector_store = self.get_vector_store()
         vector_store.add_documents(chunks)
         
         return {
@@ -67,75 +82,66 @@ class RAGEngine:
         }
     
     def rebuild_index(self) -> Dict[str, Any]:
-        """Rebuild the entire vector index from all uploaded PDFs."""
-        # Clear existing index
+        """
+        Rebuild the entire vector index from all PDFs in upload directory.
+        
+        Returns:
+            Dict with rebuild details
+        """
+        # Clear existing vector store
         if CHROMA_DIR.exists():
+            import shutil
             shutil.rmtree(CHROMA_DIR)
-        CHROMA_DIR.mkdir(parents=True, exist_ok=True)
+            CHROMA_DIR.mkdir(parents=True, exist_ok=True)
         
-        # Get all PDFs
-        pdf_files = list(UPLOAD_DIR.glob("*.pdf"))
+        # Reset vector store reference
+        self._vector_store = None
         
-        if not pdf_files:
-            return {"status": "no files", "documents": 0, "chunks": 0}
+        # Process all PDFs
+        total_chunks = 0
+        processed_files = []
         
-        all_chunks = []
-        
-        for pdf_path in pdf_files:
-            loader = PyPDFLoader(str(pdf_path))
-            documents = loader.load()
-            
-            for doc in documents:
-                doc.metadata["source"] = pdf_path.name
-            
-            chunks = self.text_splitter.split_documents(documents)
-            all_chunks.extend(chunks)
-        
-        # Create new vector store with all chunks
-        if all_chunks:
-            Chroma.from_documents(
-                documents=all_chunks,
-                embedding=self.embeddings,
-                persist_directory=str(CHROMA_DIR)
-            )
+        for pdf_file in UPLOAD_DIR.glob("*.pdf"):
+            result = self.process_pdf(str(pdf_file))
+            total_chunks += result["chunks"]
+            processed_files.append(result["filename"])
         
         return {
-            "status": "rebuilt",
-            "documents": len(pdf_files),
-            "chunks": len(all_chunks)
+            "documents_processed": len(processed_files),
+            "total_chunks": total_chunks,
+            "files": processed_files
         }
     
-    def ask_question(self, question: str) -> Dict[str, Any]:
-        """Ask a question and get an answer with sources."""
+    def ask(self, question: str, k: int = 4) -> Dict[str, Any]:
+        """
+        Ask a question and get an answer based on the indexed documents.
+        
+        Args:
+            question: The question to ask
+            k: Number of chunks to retrieve (default 4)
+            
+        Returns:
+            Dict with answer and source documents
+        """
         vector_store = self.get_vector_store()
         
-        if vector_store is None:
+        # Check if we have any documents
+        collection = vector_store._collection
+        if collection.count() == 0:
             return {
-                "answer": "No documents have been indexed yet. Please upload a PDF first.",
+                "answer": "No documents have been uploaded yet. Please upload some PDF documents first.",
                 "sources": []
             }
         
-        # Create retriever
+        # Create retriever with k parameter
         retriever = vector_store.as_retriever(
             search_type="similarity",
-            search_kwargs={"k": 4}
+            search_kwargs={"k": k}
         )
         
-        # Get relevant documents
-        relevant_docs = retriever.get_relevant_documents(question)
-        
-        if not relevant_docs:
-            return {
-                "answer": "I couldn't find any relevant information in the uploaded documents.",
-                "sources": []
-            }
-        
-        # Build context from relevant docs
-        context = "\n\n".join([doc.page_content for doc in relevant_docs])
-        
-        # Create prompt
-        prompt = f"""Based on the following context from uploaded documents, answer the question. 
-If the answer cannot be found in the context, say "I don't have enough information to answer that based on the uploaded documents."
+        # Create prompt template
+        prompt_template = """Use the following pieces of context to answer the question at the end. 
+If you don't know the answer based on the context, just say that you don't know, don't try to make up an answer.
 
 Context:
 {context}
@@ -144,66 +150,85 @@ Question: {question}
 
 Answer:"""
         
-        # Get answer from LLM
+        prompt = PromptTemplate(
+            template=prompt_template,
+            input_variables=["context", "question"]
+        )
+        
+        # Create LLM
         llm = ChatOpenAI(model="gpt-4o", temperature=0)
-        response = llm.invoke(prompt)
+        
+        # Create QA chain
+        qa_chain = RetrievalQA.from_chain_type(
+            llm=llm,
+            chain_type="stuff",
+            retriever=retriever,
+            return_source_documents=True,
+            chain_type_kwargs={"prompt": prompt}
+        )
+        
+        # Get answer
+        result = qa_chain.invoke({"query": question})
         
         # Format sources
         sources = []
-        seen = set()
-        for doc in relevant_docs:
-            source_key = (doc.metadata.get("source", "Unknown"), doc.metadata.get("page", 0))
-            if source_key not in seen:
-                seen.add(source_key)
-                sources.append({
-                    "document": doc.metadata.get("source", "Unknown"),
-                    "page": doc.metadata.get("page", 0) + 1,
-                    "snippet": doc.page_content[:200] + "..." if len(doc.page_content) > 200 else doc.page_content
-                })
+        for doc in result.get("source_documents", []):
+            sources.append({
+                "document": doc.metadata.get("source", "Unknown"),
+                "page": doc.metadata.get("page", 0) + 1,
+                "snippet": doc.page_content[:200] + "..." if len(doc.page_content) > 200 else doc.page_content
+            })
         
         return {
-            "answer": response.content,
+            "answer": result["result"],
             "sources": sources
         }
     
-    def get_document_list(self) -> List[Dict[str, Any]]:
-        """Get list of uploaded documents."""
+    def get_documents(self) -> List[Dict[str, str]]:
+        """
+        Get list of uploaded documents.
+        
+        Returns:
+            List of dicts with document info
+        """
         documents = []
-        
-        for pdf_path in UPLOAD_DIR.glob("*.pdf"):
+        for pdf_file in UPLOAD_DIR.glob("*.pdf"):
             documents.append({
-                "name": pdf_path.name,
-                "size": pdf_path.stat().st_size
+                "name": pdf_file.name,
+                "size": f"{pdf_file.stat().st_size / 1024:.1f} KB"
             })
-        
         return documents
     
     def delete_document(self, filename: str) -> bool:
-        """Delete a document and rebuild index."""
-        file_path = UPLOAD_DIR / filename
+        """
+        Delete a document and rebuild the index.
         
+        Args:
+            filename: Name of the file to delete
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        file_path = UPLOAD_DIR / filename
         if file_path.exists():
             file_path.unlink()
+            # Rebuild index without this document
             self.rebuild_index()
             return True
-        
         return False
     
     def get_status(self) -> Dict[str, Any]:
-        """Get current system status."""
-        pdf_count = len(list(UPLOAD_DIR.glob("*.pdf")))
+        """
+        Get the current status of the RAG engine.
         
+        Returns:
+            Dict with status information
+        """
         vector_store = self.get_vector_store()
-        chunk_count = 0
-        
-        if vector_store is not None:
-            try:
-                chunk_count = vector_store._collection.count()
-            except:
-                pass
+        collection = vector_store._collection
         
         return {
-            "documents": pdf_count,
-            "chunks": chunk_count,
-            "index_exists": vector_store is not None
+            "documents": len(list(UPLOAD_DIR.glob("*.pdf"))),
+            "chunks_indexed": collection.count(),
+            "index_exists": collection.count() > 0
         }

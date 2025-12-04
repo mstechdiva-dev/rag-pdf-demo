@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>rag-pdf | Document Q&A</title>
+    <title>RAG Projects Content Search</title>
     <style>
         * {
             margin: 0;
@@ -32,13 +32,13 @@
         }
         
         header h1 {
-            font-size: 28px;
+            font-size: 24px;
             margin-bottom: 8px;
         }
         
         header p {
             opacity: 0.9;
-            font-size: 16px;
+            font-size: 15px;
         }
         
         .main-grid {
@@ -277,6 +277,7 @@
             padding: 14px 24px;
             border-radius: 24px;
             font-size: 15px;
+            font-weight: 500;
             cursor: pointer;
             transition: background 0.2s;
         }
@@ -290,29 +291,34 @@
             cursor: not-allowed;
         }
         
+        .empty-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            color: #94a3b8;
+            text-align: center;
+            padding: 40px;
+        }
+        
+        .empty-state p {
+            margin-top: 12px;
+            font-size: 15px;
+        }
+        
         .loading {
             display: inline-block;
-            width: 20px;
-            height: 20px;
-            border: 2px solid #e2e8f0;
-            border-top-color: #2563eb;
+            width: 16px;
+            height: 16px;
+            border: 2px solid #ffffff;
             border-radius: 50%;
+            border-top-color: transparent;
             animation: spin 0.8s linear infinite;
         }
         
         @keyframes spin {
             to { transform: rotate(360deg); }
-        }
-        
-        .empty-state {
-            text-align: center;
-            padding: 60px 20px;
-            color: #94a3b8;
-        }
-        
-        .empty-state p {
-            margin-top: 12px;
-            font-size: 14px;
         }
         
         .toast {
@@ -321,7 +327,7 @@
             right: 24px;
             background: #1a365d;
             color: white;
-            padding: 14px 20px;
+            padding: 14px 24px;
             border-radius: 8px;
             font-size: 14px;
             opacity: 0;
@@ -343,8 +349,8 @@
 <body>
     <header>
         <div class="container">
-            <h1>📄 rag-pdf</h1>
-            <p>Ask questions about your PDF documents using RAG</p>
+            <h1>🔍 Retrieval Augmented Generation (RAG) Projects Content-Specific Search</h1>
+            <p>Upload project documents and ask questions about their contents</p>
         </div>
     </header>
     
@@ -438,8 +444,9 @@
                 const res = await fetch('/status');
                 const data = await res.json();
                 
+                const chunks = data.chunks_indexed || 0;
                 statusDot.style.background = data.index_exists ? '#22c55e' : '#f59e0b';
-                statusText.textContent = `${data.documents} docs | ${data.chunks_indexed} chunks indexed`;
+                statusText.textContent = `${data.documents} docs | ${chunks} chunks indexed`;
                 
             } catch (e) {
                 statusDot.style.background = '#ef4444';
@@ -486,7 +493,10 @@
                         body: formData
                     });
                     
-                    if (!res.ok) throw new Error('Upload failed');
+                    if (!res.ok) {
+                        const errorData = await res.json().catch(() => ({}));
+                        throw new Error(errorData.detail || 'Upload failed');
+                    }
                     
                     const data = await res.json();
                     showToast(`Indexed ${data.details.chunks} chunks from ${file.name}`);
@@ -494,7 +504,8 @@
                     loadStatus();
                     
                 } catch (e) {
-                    showToast(`Failed to upload ${file.name}`, true);
+                    showToast(`Failed: ${e.message}`, true);
+                    console.error('Upload error:', e);
                 }
             }
         }
@@ -566,13 +577,17 @@
                     body: JSON.stringify({ question })
                 });
                 
-                if (!res.ok) throw new Error('Failed to get answer');
+                if (!res.ok) {
+                    const errorData = await res.json().catch(() => ({}));
+                    throw new Error(errorData.detail || 'Failed to get answer');
+                }
                 
                 const data = await res.json();
                 addMessage('assistant', data.answer, data.sources);
                 
             } catch (e) {
-                addMessage('assistant', 'Sorry, something went wrong. Please try again.');
+                addMessage('assistant', `Error: ${e.message}`);
+                console.error('Ask error:', e);
             }
             
             sendBtn.disabled = false;
