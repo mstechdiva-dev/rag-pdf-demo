@@ -394,52 +394,6 @@
                 </div>
             </main>
         </div>
-        
-        <!-- About Section -->
-        <div class="about-section" style="margin-top: 30px; background: white; border-radius: 12px; padding: 24px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
-            <h2 style="font-size: 18px; color: #1a365d; margin-bottom: 16px;">About This Demo</h2>
-            <p style="color: #475569; line-height: 1.6; margin-bottom: 16px;">
-                This application demonstrates <strong>Retrieval Augmented Generation (RAG)</strong>, the architecture behind most enterprise AI assistants. Rather than relying solely on an LLM's training data, RAG retrieves relevant context from your documents before generating answers.
-            </p>
-            
-            <h3 style="font-size: 15px; color: #1a365d; margin-bottom: 12px;">How It Works</h3>
-            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 20px;">
-                <div style="background: #f8fafc; padding: 12px; border-radius: 8px; text-align: center;">
-                    <div style="font-size: 24px; margin-bottom: 4px;">📄</div>
-                    <div style="font-size: 13px; color: #334155;"><strong>Upload</strong></div>
-                    <div style="font-size: 12px; color: #64748b;">PDFs are parsed and split into chunks</div>
-                </div>
-                <div style="background: #f8fafc; padding: 12px; border-radius: 8px; text-align: center;">
-                    <div style="font-size: 24px; margin-bottom: 4px;">🔢</div>
-                    <div style="font-size: 13px; color: #334155;"><strong>Embed</strong></div>
-                    <div style="font-size: 12px; color: #64748b;">Chunks converted to vector embeddings</div>
-                </div>
-                <div style="background: #f8fafc; padding: 12px; border-radius: 8px; text-align: center;">
-                    <div style="font-size: 24px; margin-bottom: 4px;">🗄️</div>
-                    <div style="font-size: 13px; color: #334155;"><strong>Store</strong></div>
-                    <div style="font-size: 12px; color: #64748b;">Indexed in ChromaDB for similarity search</div>
-                </div>
-                <div style="background: #f8fafc; padding: 12px; border-radius: 8px; text-align: center;">
-                    <div style="font-size: 24px; margin-bottom: 4px;">🔍</div>
-                    <div style="font-size: 13px; color: #334155;"><strong>Query</strong></div>
-                    <div style="font-size: 12px; color: #64748b;">Question matched against stored chunks</div>
-                </div>
-                <div style="background: #f8fafc; padding: 12px; border-radius: 8px; text-align: center;">
-                    <div style="font-size: 24px; margin-bottom: 4px;">✨</div>
-                    <div style="font-size: 13px; color: #334155;"><strong>Generate</strong></div>
-                    <div style="font-size: 12px; color: #64748b;">GPT-4o answers using retrieved context</div>
-                </div>
-            </div>
-            
-            <h3 style="font-size: 15px; color: #1a365d; margin-bottom: 10px;">Technical Stack</h3>
-            <div style="display: flex; flex-wrap: wrap; gap: 8px;">
-                <span style="background: #e0e7ff; color: #3730a3; padding: 4px 12px; border-radius: 16px; font-size: 12px; font-weight: 500;">FastAPI</span>
-                <span style="background: #e0e7ff; color: #3730a3; padding: 4px 12px; border-radius: 16px; font-size: 12px; font-weight: 500;">LangChain</span>
-                <span style="background: #e0e7ff; color: #3730a3; padding: 4px 12px; border-radius: 16px; font-size: 12px; font-weight: 500;">ChromaDB</span>
-                <span style="background: #e0e7ff; color: #3730a3; padding: 4px 12px; border-radius: 16px; font-size: 12px; font-weight: 500;">OpenAI</span>
-                <span style="background: #e0e7ff; color: #3730a3; padding: 4px 12px; border-radius: 16px; font-size: 12px; font-weight: 500;">Railway</span>
-            </div>
-        </div>
     </div>
     
     <div class="toast" id="toast"></div>
