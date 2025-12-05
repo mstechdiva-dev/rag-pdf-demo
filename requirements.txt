@@ -4,6 +4,7 @@ python-multipart==0.0.6
 langchain==0.1.0
 langchain-openai==0.0.2
 langchain-community==0.0.10
+langchain-chroma
 chromadb==0.4.22
 pypdf==3.17.4
 python-dotenv==1.0.0
