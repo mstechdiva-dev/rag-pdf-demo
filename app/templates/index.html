@@ -473,17 +473,46 @@
                 const res = await fetch('/documents');
                 const data = await res.json();
                 
-                documentList.innerHTML = data.documents.map(doc => `
-                    <li class="document-item">
-                        <span class="doc-name" title="${doc.name}">📄 ${doc.name}</span>
-                        <button class="delete-btn" onclick="deleteDocument('${doc.name}')" title="Delete">🗑️</button>
-                    </li>
-                `).join('') || '<li style="color: #94a3b8; font-size: 13px; padding: 10px;">No documents uploaded</li>';
+                if (data.documents.length === 0) {
+                    documentList.innerHTML = '<li style="color: #94a3b8; font-size: 13px; padding: 10px;">No documents uploaded</li>';
+                } else {
+                    documentList.innerHTML = data.documents.map(doc => `
+                        <li class="document-item">
+                            <span class="doc-name" title="${doc.name}">📄 ${doc.name}</span>
+                            <button class="delete-btn" data-filename="${encodeURIComponent(doc.name)}" title="Delete">🗑️</button>
+                        </li>
+                    `).join('');
+                }
                 
             } catch (e) {
                 console.error('Failed to load documents:', e);
             }
         }
+        
+        // Event delegation for delete buttons - FIX: handles delete reliably
+        documentList.addEventListener('click', async (e) => {
+            const deleteBtn = e.target.closest('.delete-btn');
+            if (!deleteBtn) return;
+            
+            const filename = decodeURIComponent(deleteBtn.dataset.filename);
+            if (!confirm(`Delete ${filename}?`)) return;
+            
+            try {
+                const res = await fetch(`/documents/${encodeURIComponent(filename)}`, {
+                    method: 'DELETE'
+                });
+                
+                if (!res.ok) throw new Error('Delete failed');
+                
+                showToast(`Deleted ${filename}`);
+                loadDocuments();
+                loadStatus();
+                
+            } catch (e) {
+                showToast('Failed to delete document', true);
+                console.error('Delete error:', e);
+            }
+        });
         
         async function loadStatus() {
             try {
@@ -554,25 +583,9 @@
                     console.error('Upload error:', e);
                 }
             }
-        }
-        
-        async function deleteDocument(filename) {
-            if (!confirm(`Delete ${filename}?`)) return;
             
-            try {
-                const res = await fetch(`/documents/${encodeURIComponent(filename)}`, {
-                    method: 'DELETE'
-                });
-                
-                if (!res.ok) throw new Error('Delete failed');
-                
-                showToast(`Deleted ${filename}`);
-                loadDocuments();
-                loadStatus();
-                
-            } catch (e) {
-                showToast('Failed to delete document', true);
-            }
+            // FIX: Reset file input so the same/new files can be uploaded again
+            fileInput.value = '';
         }
         
         // Chat functionality
