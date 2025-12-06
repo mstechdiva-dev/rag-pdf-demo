@@ -558,40 +558,73 @@
         });
         
         async function handleFiles(files) {
-            for (const file of files) {
+            // Convert FileList to array and filter PDFs
+            const pdfFiles = Array.from(files).filter(file => {
                 if (!file.name.toLowerCase().endsWith('.pdf')) {
-                    showToast('Only PDF files are allowed', true);
-                    continue;
+                    showToast(`Skipped ${file.name} - only PDFs allowed`, true);
+                    return false;
                 }
+                return true;
+            });
+            
+            if (pdfFiles.length === 0) {
+                fileInput.value = '';
+                return;
+            }
+            
+            // Disable upload zone during processing
+            uploadZone.style.pointerEvents = 'none';
+            uploadZone.style.opacity = '0.6';
+            
+            let successCount = 0;
+            let failCount = 0;
+            
+            // Process files one at a time
+            for (let i = 0; i < pdfFiles.length; i++) {
+                const file = pdfFiles[i];
+                showToast(`Uploading ${i + 1}/${pdfFiles.length}: ${file.name}...`);
                 
                 const formData = new FormData();
                 formData.append('file', file);
                 
                 try {
-                    showToast(`Uploading ${file.name}...`);
                     const res = await fetch('/upload', {
                         method: 'POST',
                         body: formData
                     });
                     
-                    if (!res.ok) {
+                    if (res.ok) {
+                        const data = await res.json();
+                        successCount++;
+                        console.log(`Uploaded ${file.name}: ${data.details.chunks} chunks`);
+                    } else {
                         const errorData = await res.json().catch(() => ({}));
-                        throw new Error(errorData.detail || 'Upload failed');
+                        console.error(`Failed ${file.name}:`, errorData.detail || 'Unknown error');
+                        failCount++;
                     }
-                    
-                    const data = await res.json();
-                    showToast(`Indexed ${data.details.chunks} chunks from ${file.name}`);
-                    loadDocuments();
-                    loadStatus();
-                    
                 } catch (e) {
-                    showToast(`Failed: ${e.message}`, true);
-                    console.error('Upload error:', e);
+                    console.error(`Error uploading ${file.name}:`, e);
+                    failCount++;
                 }
             }
             
-            // FIX: Reset file input so the same/new files can be uploaded again
+            // Re-enable upload zone
+            uploadZone.style.pointerEvents = '';
+            uploadZone.style.opacity = '';
+            
+            // Reset file input
             fileInput.value = '';
+            
+            // Refresh document list once at the end
+            await loadDocuments();
+            await loadStatus();
+            
+            // Show final summary
+            if (failCount === 0) {
+                showToast(`Uploaded ${successCount} file${successCount !== 1 ? 's' : ''} successfully`);
+            } else {
+                showToast(`Uploaded ${successCount}, failed ${failCount}`, failCount > 0);
+            }
         }
         
         // Chat functionality
