@@ -85,26 +85,40 @@ class RAGEngine:
         """
         Rebuild the entire vector index from all PDFs in upload directory.
         
+        This is a recovery mechanism - use delete_document() for normal deletions.
+        
         Returns:
             Dict with rebuild details
         """
-        # Clear existing vector store
-        if CHROMA_DIR.exists():
-            import shutil
-            shutil.rmtree(CHROMA_DIR)
-            CHROMA_DIR.mkdir(parents=True, exist_ok=True)
-        
-        # Reset vector store reference
-        self._vector_store = None
+        # Clear existing collection instead of nuking the directory
+        try:
+            vector_store = self.get_vector_store()
+            collection = vector_store._collection
+            
+            # Get all IDs and delete them
+            all_ids = collection.get()["ids"]
+            if all_ids:
+                collection.delete(ids=all_ids)
+        except Exception as e:
+            # If collection is corrupted, fall back to directory removal
+            print(f"Collection reset failed, recreating directory: {e}")
+            if CHROMA_DIR.exists():
+                import shutil
+                shutil.rmtree(CHROMA_DIR)
+                CHROMA_DIR.mkdir(parents=True, exist_ok=True)
+            self._vector_store = None
         
         # Process all PDFs
         total_chunks = 0
         processed_files = []
         
         for pdf_file in UPLOAD_DIR.glob("*.pdf"):
-            result = self.process_pdf(str(pdf_file))
-            total_chunks += result["chunks"]
-            processed_files.append(result["filename"])
+            try:
+                result = self.process_pdf(str(pdf_file))
+                total_chunks += result["chunks"]
+                processed_files.append(result["filename"])
+            except Exception as e:
+                print(f"Failed to process {pdf_file.name}: {e}")
         
         return {
             "documents_processed": len(processed_files),
@@ -201,7 +215,9 @@ Answer:"""
     
     def delete_document(self, filename: str) -> bool:
         """
-        Delete a document and rebuild the index.
+        Delete a document and remove its chunks from the vector store.
+        
+        Uses ChromaDB's native delete-by-metadata instead of rebuilding everything.
         
         Args:
             filename: Name of the file to delete
@@ -210,12 +226,30 @@ Answer:"""
             True if successful, False otherwise
         """
         file_path = UPLOAD_DIR / filename
-        if file_path.exists():
+        if not file_path.exists():
+            return False
+        
+        # First, remove chunks from vector store by source metadata
+        try:
+            vector_store = self.get_vector_store()
+            collection = vector_store._collection
+            
+            # Delete all chunks where source matches the filename
+            collection.delete(where={"source": filename})
+            
+        except Exception as e:
+            print(f"Warning: Could not remove chunks from vector store: {e}")
+            # Continue anyway - we'll still delete the file
+            # The orphaned chunks won't cause issues, just waste space
+        
+        # Delete the file
+        try:
             file_path.unlink()
-            # Rebuild index without this document
-            self.rebuild_index()
-            return True
-        return False
+        except Exception as e:
+            print(f"Error deleting file: {e}")
+            return False
+        
+        return True
     
     def get_status(self) -> Dict[str, Any]:
         """

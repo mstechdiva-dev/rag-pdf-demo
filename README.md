@@ -1,4 +1,4 @@
-# rag-pdf
+# Retrieval Augmented Generation (RAG) Projects Content-Specific Search
 
 A self-hosted RAG (Retrieval-Augmented Generation) application that lets you upload PDF documents and ask questions about their contents. Built to search my own cover letters, portfolio documents, and career materials.
 

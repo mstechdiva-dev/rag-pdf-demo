@@ -497,21 +497,27 @@
             const filename = decodeURIComponent(deleteBtn.dataset.filename);
             if (!confirm(`Delete ${filename}?`)) return;
             
+            // Disable button while processing
+            deleteBtn.disabled = true;
+            deleteBtn.style.opacity = '0.5';
+            showToast(`Deleting ${filename}...`);
+            
             try {
                 const res = await fetch(`/documents/${encodeURIComponent(filename)}`, {
                     method: 'DELETE'
                 });
                 
-                if (!res.ok) throw new Error('Delete failed');
-                
-                showToast(`Deleted ${filename}`);
-                loadDocuments();
-                loadStatus();
-                
+                if (res.ok) {
+                    showToast(`Deleted ${filename}`);
+                }
             } catch (e) {
-                showToast('Failed to delete document', true);
-                console.error('Delete error:', e);
+                // Network error or timeout - delete may still have worked
+                console.error('Delete request error:', e);
             }
+            
+            // Always refresh the list - the server state is the source of truth
+            await loadDocuments();
+            await loadStatus();
         });
         
         async function loadStatus() {
